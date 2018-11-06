@@ -22,7 +22,7 @@ public class TempStack extends Stack implements Relocatable {
 	public MahjongSuit getDragonType() {
 		return dragonType;
 	}
-	public void setDragonType(MahjongSuit dragonType) {
+	public void setDragonLock(MahjongSuit dragonType) {
 		this.dragonType = dragonType;
 		dragonLock = true;
 	}

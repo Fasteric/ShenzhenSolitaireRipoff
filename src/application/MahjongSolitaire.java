@@ -13,7 +13,10 @@ import javafx.application.Application;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Pane;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
@@ -45,6 +48,11 @@ public class MahjongSolitaire extends Application {
 	private static PlayStack[] playStacks = new PlayStack[8];
 	private static TempStack[] tempStacks = new TempStack[3];
 	private static KeepStack[] keepStacks = new KeepStack[3];
+	private static LockButton[] lockButtons = new LockButton[3];
+
+	private static Button newgameBtn = new Button("New game");
+	private static Button howtoBtn = new Button("Instruction");
+	private static ImageView howtoImgView = new ImageView();
 	
 	/*** start ***/
 	public static Pane pane = new Pane();
@@ -67,19 +75,56 @@ public class MahjongSolitaire extends Application {
 	}
 	
 	/*** CONTROL ***/
-	public static ArrayList<Mahjong> deck = deckBuilder();
+	private static ArrayList<Mahjong> deck = deckBuilder();
 	
-	public static void load() {
+	public static void load() { // run once
 		
 		actionLock = true;
 		
 		for (int i = 0; i < 8; i++) playStacks[i] = new PlayStack(PLAY_X + i * CARD_SPACE, PLAY_Y);
 		for (int i = 0; i < 3; i++) tempStacks[i] = new TempStack(TEMP_X + i * CARD_SPACE, TEMP_Y);
-		for (int i = 0; i < 3; i++) keepStacks[i] = new KeepStack(KEEP_X + i * CARD_SPACE, KEEP_Y, MahjongSuit.fromInt(i));
+		for (int i = 0; i < 3; i++) keepStacks[i] = new KeepStack(KEEP_X + i * CARD_SPACE, KEEP_Y, MahjongSuit.fromInt(i+1));
+		
+		String path = "res/images/%s.png";
+		lockButtons[2] = new LockButton(
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockRedDisable")).toString()),
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockRedHover")).toString()),
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockRedIdle")).toString()),
+				LEFT_PADDING + 3 * CARD_SPACE, TOP_PADDING + 0 * 60, MahjongSuit.Chun
+				);
+		lockButtons[1] = new LockButton(
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockGreenDisable")).toString()),
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockGreenHover")).toString()),
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockGreenIdle")).toString()),
+				LEFT_PADDING + 3 * CARD_SPACE, TOP_PADDING + 1 * 60, MahjongSuit.Hatsu
+				);
+		lockButtons[0] = new LockButton(
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockWhiteDisable")).toString()),
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockWhiteHover")).toString()),
+				new Image(ClassLoader.getSystemResource(String.format(path, "LockWhiteIdle")).toString()),
+				LEFT_PADDING + 3 * CARD_SPACE, TOP_PADDING + 2 * 60, MahjongSuit.Haku
+				);
 		
 		pane.getChildren().addAll(playStacks);
 		pane.getChildren().addAll(tempStacks);
 		pane.getChildren().addAll(keepStacks);
+		pane.getChildren().addAll(lockButtons);
+		
+		newgameBtn.setTranslateX(LEFT_PADDING);
+		newgameBtn.setTranslateY(10);
+		newgameBtn.setPrefSize(CARD_WIDTH, TOP_PADDING / 2);
+		newgameBtn.setOnMouseClicked(new EventHandler<MouseEvent>() {
+			public void handle(MouseEvent event) {
+				if (isActionLock()) return;
+				reset();
+			}
+		});
+		pane.getChildren().add(newgameBtn);
+		
+		howtoBtn.setTranslateX(LEFT_PADDING + 1 * CARD_SPACE);
+		howtoBtn.setTranslateY(10);
+		howtoBtn.setPrefSize(CARD_WIDTH, TOP_PADDING / 2);
+		pane.getChildren().add(howtoBtn);
 		
 		setup();
 		
@@ -94,6 +139,7 @@ public class MahjongSolitaire extends Application {
 		for (int i = 0; i < 8; i++) playStacks[i].clear();
 		for (int i = 0; i < 3; i++) tempStacks[i].clear();
 		for (int i = 0; i < 3; i++) keepStacks[i].clear();
+		for (int i = 0; i < 3; i++) lockButtons[i].disable();
 		
 		setup();
 		
@@ -119,8 +165,9 @@ public class MahjongSolitaire extends Application {
 		
 		for (int i = 0; i < deck.size(); i++) {
 			Mahjong card = deck.get(i);
+			card.setTranslate(DECK_X, DECK_Y);
 			PlayStack stack = playStacks[i % 8];
-			TranslateTransition tt = new TranslateTransition(Duration.millis(10), card);
+			TranslateTransition tt = new TranslateTransition(Duration.millis(100), card);
 			tt.setToX(stack.getTranslateX());
 			tt.setToY(stack.getTopTranslateY());
 			seq.getChildren().add(tt);
@@ -129,8 +176,8 @@ public class MahjongSolitaire extends Application {
 		
 		seq.setOnFinished(new EventHandler<ActionEvent>() {
 			public void handle(ActionEvent event) {
-				update();
 				removePendingAnimation();
+				update();
 			}
 		});
 		
@@ -150,7 +197,7 @@ public class MahjongSolitaire extends Application {
 		
 		if (executeKeep(tops)) return;
 		
-		if (executeDragonLock(tops)) return; // update not execute
+		updateDragonLock(tops);
 		
 	}
 	
@@ -192,19 +239,22 @@ public class MahjongSolitaire extends Application {
 		if (lowestRank > lowestKeep + 1) return false;
 		if (lowestCards.size() == 0) return false;
 		
+		addPendingAnimation();
+		
 		for (Mahjong card : lowestCards) {
 			
-			KeepStack stack = keepStacks[card.getSuit().toInt() - 1]; // access valid keepStack
+			KeepStack stack = keepStacks[card.getSuit().toInt() - 1]; // always access valid keepStack
 			
 			if (card.getRank() - stack.getTopRank() == 1) {
 				
 				card.getOccupiedStack().removeTopCard();
 				
-				TranslateTransition tt = new TranslateTransition(Duration.millis(100), card);
+				TranslateTransition tt = new TranslateTransition(Duration.millis(200), card);
 				tt.setToX(stack.getTranslateX());
 				tt.setToY(stack.getTopTranslateY());
 				tt.setOnFinished(new EventHandler<ActionEvent>() {
 					public void handle(ActionEvent event) {
+						removePendingAnimation();
 						update();
 					}
 				});
@@ -222,47 +272,58 @@ public class MahjongSolitaire extends Application {
 		
 	}
 	
-	private static boolean executeDragonLock(ArrayList<Mahjong> tops) {
+	private static void updateDragonLock(ArrayList<Mahjong> tops) {
+		
+		for (int i = 0; i < 3; i++) lockButtons[i].disable();
 		
 		int[] dragonCount = new int[3];
-		
-		boolean lockableFlag = false;
 		for (Mahjong card : tops) {
 			int suit = card.getSuit().toInt();
 			if (suit >= 4) {
 				dragonCount[suit % 4]++;
-				if (dragonCount[suit % 4] == 4) lockableFlag = true;
-			}
-		}
-		
-		if (!lockableFlag) return false;
-		
-		for (int i = 0; i < 3; i++) {
-			
-			if (dragonCount[i] != 4) continue;
-			
-			MahjongSuit lockSuit = MahjongSuit.fromInt(i + 4);
-			
-			for (int j = 0; i < 3; i++) {
-				
-				TempStack stack = tempStacks[j];
-				
-				if (stack.isEmpty() || stack.getTopCard().getSuit() == lockSuit) {
-					
-					 ArrayList<Mahjong> dragons = stack.clear();
-					 for (Mahjong card : tops) if (card.getSuit() == lockSuit) dragons.add(card);
-					 animateDrop(dragons, stack, 100);
-					 for (Mahjong card : dragons) stack.addCard(card);
-					 stack.setDragonType(lockSuit);
-					 
-					 return true;
-					 
+				if (dragonCount[suit % 4] == 4) {
+					lockButtons[suit % 4].enable();
 				}
 			}
-			
 		}
 		
-		return false;
+	}
+	
+	public static boolean executeDragonLock(MahjongSuit dragon) {
+		
+		TempStack stack = null;
+		
+		for (int i = 0; i < 3; i++) {
+			if (tempStacks[i].isEmpty()) {
+				stack = tempStacks[i];
+				break;
+			}
+			if (tempStacks[i].getTopCard().getSuit() == dragon) {
+				stack = tempStacks[i];
+				break;
+			}
+		}
+		
+		if (stack == null) {
+			System.out.println("NULLSTACK EXECUTEDRAGONLOCK IS NOT POSSIBLE");
+			return false;
+		}
+		
+		stack.setDragonLock(dragon);
+		
+		ArrayList<Mahjong> topCards = fetchTop();
+		ArrayList<Mahjong> lockCards = new ArrayList<>();
+		for (Mahjong card : topCards) {
+			if (card.getSuit() != dragon) continue;
+			card.getOccupiedStack().removeTopCard();
+			lockCards.add(card);
+		}
+		
+		animateDrop(lockCards, stack, 100);
+		
+		for (Mahjong card : lockCards) stack.addCard(card);
+		
+		return true;
 		
 	}
 	
